@@ -1,5 +1,4 @@
-# Ejercicio Evaluado — Lectura y Limpieza de Datos (Python)
-### Diplomado de Ciencia de Datos — Módulo 2
+# Lectura y Limpieza de Datos (Python)
 
 Este proyecto aplica técnicas de lectura, limpieza y visualización de datos sobre el dataset
 `coffee_ratings.csv` (1,339 filas × 43 columnas), que contiene evaluaciones de calidad de café
