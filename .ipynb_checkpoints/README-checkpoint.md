@@ -259,57 +259,35 @@ print(datos[["expiration", "expiration_day", "expiration_month", "expiration_yea
 ## Actividad 5: Crear columnas de año y mes de cosecha
 
 ```python
-patron_anio = r'\b((?:19|20)\d{2})\b'
-patron_mes  = (
-    r'\b(January|February|March|April|May|June|July|August|September|October|November|December'
-    r'|Jan|Feb|Mar|Apr|Jun|Jul|Aug|Sep|Sept|Oct|Nov|Dec'
-    r'|Enero|Febrero|Marzo|Abril|Mayo|Junio|Julio|Agosto|Septiembre|Octubre|Noviembre|Diciembre'
-    r'|Spring|Summer|Fall|Winter)\b'
-)
+split_hy = datos["harvest_year"].str.split(r"\s*/\s*|\s*-\s*(?=[0-9])", n=1, expand=True)
 
-def extraer_harvest(valor):
-    if pd.isna(valor):
-        return pd.Series([np.nan, np.nan])
-    s = str(valor).strip()
-    anios = re.findall(patron_anio, s)
-    mes_m = re.search(patron_mes, s, re.IGNORECASE)
-    return pd.Series([
-        mes_m.group(1) if mes_m else np.nan,
-        anios[-1]      if anios  else np.nan,
-    ])
-
-datos[["harvest_mes", "harvest_anio"]] = datos["harvest_year"].apply(extraer_harvest)
+datos["harvest_mes"]  = split_hy[0].str.strip()
+datos["harvest_anio"] = split_hy[1].str.strip() if 1 in split_hy.columns else np.nan
 
 ambiguos_hy = datos["harvest_anio"].isna()
 print(f"Observaciones ambiguas en harvest_year: {ambiguos_hy.sum()}")
-print(f"  · NaN originales en harvest_year:        {datos['harvest_year'].isna().sum()}")
-print(f"  · Sin año extraíble (valor presente):     {(ambiguos_hy & datos['harvest_year'].notna()).sum()}")
+print(f"  · NaN originales en harvest_year:         {datos['harvest_year'].isna().sum()}")
+print(f"  · Valores sin separador divisible:         {(ambiguos_hy & datos['harvest_year'].notna()).sum()}")
 ```
 
 **Explicación línea por línea:**
 
-- `patron_anio = r'\b((?:19|20)\d{2})\b'` — busca un año de 4 dígitos que empiece con `19` o
-  `20`. Los `\b` son *word boundaries*: garantizan que el año no forme parte de un número mayor
-  (p. ej., no captura `"72010"`).
-- `patron_mes` — alternación de nombres de mes en inglés (completos y abreviados), en español y
-  temporadas en inglés. Se construye como concatenación de cadenas raw para mayor legibilidad.
-- `def extraer_harvest(valor)` — aplica los dos patrones de forma **independiente** sobre el
-  mismo valor: uno busca el mes, el otro busca el año. A diferencia del `str.split` anterior,
-  no requiere que exista un separador entre ambos.
-- `re.findall(patron_anio, s)` — devuelve una lista con **todos** los años encontrados en la
-  cadena. Para rangos como `"2016/2017"` devuelve `["2016", "2017"]`.
-- `anios[-1]` — toma el **último** año de la lista, que corresponde al año de fin del período
-  de cosecha.
-- `re.search(patron_mes, s, re.IGNORECASE)` — busca la **primera** coincidencia de nombre de
-  mes sin distinción de mayúsculas. Devuelve `None` si no hay coincidencia.
-- `mes_m.group(1)` — extrae el texto capturado por el grupo `(...)` del patrón.
-- `return pd.Series([mes, anio])` — devolver una `Series` desde `.apply()` permite asignar
-  simultáneamente dos columnas: `datos[["harvest_mes", "harvest_anio"]] = ...`.
+- `r"\s*/\s*|\s*-\s*(?=[0-9])"` — patrón regex con dos alternativas separadas por `|`:
+  - `\s*/\s*` — barra `/` con cero o más espacios a cada lado.
+  - `\s*-\s*(?=[0-9])` — guión `-` con cero o más espacios, **seguido de un dígito** (lookahead
+    positivo `(?=[0-9])`). El lookahead `(?=...)` no consume caracteres; sólo comprueba que lo
+    que sigue es un dígito. Esto evita dividir palabras con guión como `"Washed-Dry"`.
+- `n=1` — como en la Actividad 3, realiza máximo una división.
+- `split_hy[1]` — la segunda parte del split (lo que viene después del separador). Si no hubo
+  separador, esta columna contiene `NaN` para esas filas.
+- `datos["harvest_anio"].isna()` — máscara booleana que identifica filas donde `harvest_anio`
+  es `NaN`, es decir, donde no se pudo dividir.
+- `ambiguos_hy & datos["harvest_year"].notna()` — intersección de dos condiciones: filas sin
+  año y filas con valor original no nulo. Así se distinguen los `NaN` originales de los que
+  resultan de la falta de separador.
 
-**Resultado:** 64 observaciones ambiguas (47 `NaN` originales + 17 valores sin año extraíble).
-Valores como `"2014"` quedan como `harvest_mes=NaN, harvest_anio="2014"` y `"March 2010"` como
-`harvest_mes="March", harvest_anio="2010"`. Los únicos casos genuinamente ambiguos son rangos
-de meses sin año (`"Abril - Julio"`, `"May-August"`) y valores malformados (`"TEST"`, `"mmm"`).
+**Resultado:** 1,196 observaciones ambiguas (47 `NaN` originales + 1,149 sin separador divisible,
+incluyendo años simples como `"2014"` y formatos no estándar como `"23 July 2010"`).
 
 ---
 
@@ -413,12 +391,6 @@ ax.set_xlabel("Peso del Saco (kg)", fontsize=13)
 ax.set_ylabel("Densidad", fontsize=13)
 ax.set_title("Distribución del Peso de los Sacos de Café por Especie",
              fontsize=14, fontweight="bold")
-
-leg = ax.get_legend()
-leg.set_title("Especie")
-leg.get_frame().set_alpha(0.9)
-leg.get_frame().set_edgecolor("grey")
-
 sns.despine()
 plt.tight_layout()
 plt.savefig("act7_density_bagweight.png", dpi=150, bbox_inches="tight")
@@ -440,12 +412,6 @@ plt.show()
   - `linewidth=2.5` — grosor de la línea de contorno.
   - `palette="Set1"` — paleta de colores predefinida de seaborn (colores vivos y distinguibles).
   - `ax=ax` — especifica el eje donde se dibuja (necesario cuando se usa `plt.subplots()`).
-- `ax.get_legend()` — recupera la leyenda que `sns.kdeplot` ya creó internamente al usar `hue`.
-  Llamar a `ax.legend()` de forma directa generaría un `UserWarning` porque seaborn registra
-  sus artistas de forma interna y no quedan expuestos como artistas etiquetados de matplotlib;
-  por eso se obtiene la leyenda existente y se le aplican los estilos directamente.
-- `leg.get_frame().set_alpha(0.9)` / `.set_edgecolor("grey")` — accede al rectángulo de fondo
-  de la leyenda para aplicar opacidad y color de borde.
 
 **Resultado:** Arabica tiene distribución concentrada en 0–100 kg; Robusta muestra patrón
 diferenciado con menor amplitud.
